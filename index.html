@@ -122,6 +122,35 @@
             font-size: 12px;
         }
 
+        /* Ball Circle Styles */
+        .ball-circle {
+            width: 20px;
+            height: 20px;
+            background-color: currentColor;
+            border-radius: 50%;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 10px;
+            border: 1px solid rgba(0,0,0,0.1);
+            flex-shrink: 0;
+            box-shadow: inset -3px -3px 6px rgba(0,0,0,0.2);
+        }
+
+        .player-name-clickable {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            flex-grow: 1;
+            padding: 5px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .player-name-clickable:hover {
+            background-color: #f0fdf4;
+            color: var(--primary-green);
+        }
+
         /* Scorecard Table Styles */
         .table-container {
             overflow-x: auto;
@@ -146,7 +175,26 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 80px;
+            max-width: 120px;
+        }
+
+        .th-player {
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .th-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 4px;
+            width: 100%;
+            height: 100%;
+        }
+
+        .th-player:hover {
+            background-color: var(--light-green);
         }
 
         .score-input {
@@ -156,7 +204,7 @@
             text-align: center;
             border: 1px solid #ccc;
             border-radius: 4px;
-            font-size: 16px; /* Prevents iOS zoom on focus */
+            font-size: 16px;
         }
 
         .total-cell {
@@ -166,6 +214,11 @@
 
         .total-row {
             background-color: #eee;
+            font-weight: bold;
+        }
+
+        .winner {
+            background-color: #fff9c4;
             font-weight: bold;
         }
 
@@ -196,6 +249,7 @@
     <!-- Setup View -->
     <div id="setup-view" class="view active">
         <h3>Add Players</h3>
+        <p style="font-size: 0.9em; color: #666; margin-top: -10px;">Click a name to choose ball color</p>
         <div class="setup-group">
             <input type="text" id="player-name" placeholder="Enter name..." aria-label="Player name">
             <button class="btn-add" onclick="addPlayer()">Add</button>
@@ -210,9 +264,7 @@
             <table id="score-table">
                 <thead>
                     <tr id="table-header">
-                        <th>Player</th>
-                        <!-- Holes 1-9 generated here -->
-                        <th>Total</th>
+                        <th>Hole</th>
                     </tr>
                 </thead>
                 <tbody id="table-body">
@@ -226,22 +278,42 @@
     <!-- Summary View -->
     <div id="summary-view" class="view">
         <h3>Final Standings</h3>
-        <ul id="summary-list" class="summary-list"></ul>
+        <ul id="summary-list"></ul>
         <button class="btn-start" onclick="resetGame()">New Game</button>
     </div>
 
+    <!-- Hidden Native Color Picker -->
+    <input type="color" id="native-color-picker" style="display: none;">
+
     <script>
+        const DEFAULT_COLORS = [
+            '#e53935', '#1e88e5', '#43a047', '#fdd835', 
+            '#fb8c00', '#8e24aa', '#d81b60', '#00bcd4',
+            '#795548', '#212121', '#9e9e9e', '#4caf50'
+        ];
+
         let state = {
             players: [],
-            scores: {}, // { playerName: [hole1, hole2, ...] }
+            playerColors: {},
+            scores: {},
             gameStarted: false
         };
 
-        // Initialize from LocalStorage
         function init() {
             const saved = localStorage.getItem('crazyGolfState');
             if (saved) {
-                state = JSON.parse(saved);
+                const parsed = JSON.parse(saved);
+                state = {
+                    players: parsed.players || [],
+                    playerColors: parsed.playerColors || {},
+                    scores: parsed.scores || {},
+                    gameStarted: !!parsed.gameStarted
+                };
+                state.players.forEach((p, i) => {
+                    if (!state.playerColors[p]) {
+                        state.playerColors[p] = DEFAULT_COLORS[i % DEFAULT_COLORS.length];
+                    }
+                });
                 if (state.gameStarted) {
                     showView('scorecard-view');
                     renderScorecard();
@@ -266,6 +338,7 @@
             if (name && !state.players.includes(name)) {
                 state.players.push(name);
                 state.scores[name] = Array(9).fill(0);
+                state.playerColors[name] = DEFAULT_COLORS[(state.players.length - 1) % DEFAULT_COLORS.length];
                 input.value = '';
                 renderPlayerList();
                 save();
@@ -275,6 +348,7 @@
         function removePlayer(index) {
             const name = state.players[index];
             delete state.scores[name];
+            delete state.playerColors[name];
             state.players.splice(index, 1);
             renderPlayerList();
             save();
@@ -286,13 +360,32 @@
             list.innerHTML = '';
             state.players.forEach((player, index) => {
                 const li = document.createElement('li');
+                const color = state.playerColors[player] || '#ccc';
                 li.innerHTML = `
-                    <span>${player}</span>
+                    <div class="player-name-clickable" onclick="openColorPicker('${player}')">
+                        <div class="ball-circle" style="color: ${color}"></div>
+                        <span>${player}</span>
+                    </div>
                     <button class="btn-remove" onclick="removePlayer(${index})">Remove</button>
                 `;
                 list.appendChild(li);
             });
             startBtn.style.display = state.players.length > 0 ? 'block' : 'none';
+        }
+
+        function openColorPicker(playerName) {
+            const picker = document.getElementById('native-color-picker');
+            picker.oninput = (e) => {
+                state.playerColors[playerName] = e.target.value;
+                save();
+                if (state.gameStarted) {
+                    renderScorecard();
+                } else {
+                    renderPlayerList();
+                }
+            };
+            picker.value = state.playerColors[playerName] || '#000000';
+            picker.click();
         }
 
         function startGame() {
@@ -306,38 +399,31 @@
         function renderScorecard() {
             const headerRow = document.getElementById('table-header');
             const body = document.getElementById('table-body');
-            
-            // Render Header: "Hole" then each player name
             headerRow.innerHTML = '<th>Hole</th>';
             state.players.forEach(player => {
-                headerRow.innerHTML += `<th>${player}</th>`;
+                const color = state.playerColors[player] || '#ccc';
+                headerRow.innerHTML += `
+                    <th onclick="openColorPicker('${player}')" class="th-player">
+                        <div class="th-content">
+                            <div class="ball-circle" style="color: ${color}; width: 14px; height: 14px; margin-right: 0;"></div>
+                            <span>${player}</span>
+                        </div>
+                    </th>`;
             });
-
-            // Render Rows for each hole (1-9)
             body.innerHTML = '';
             for (let hIndex = 0; hIndex < 9; hIndex++) {
                 const tr = document.createElement('tr');
                 let rowHtml = `<td>${hIndex + 1}</td>`;
-                
                 state.players.forEach(player => {
                     const val = state.scores[player][hIndex] || '';
-                    rowHtml += `
-                        <td>
-                            <input type="number" class="score-input" 
-                                value="${val}" 
-                                min="1" 
-                                oninput="updateScore('${player}', ${hIndex}, this.value)">
-                        </td>
-                    `;
+                    rowHtml += `<td><input type="number" class="score-input" value="${val}" min="1" oninput="updateScore('${player}', ${hIndex}, this.value)"></td>`;
                 });
                 tr.innerHTML = rowHtml;
                 body.appendChild(tr);
             }
-
-            // Render Total Row at the bottom
             const totalTr = document.createElement('tr');
             totalTr.className = 'total-row';
-            let totalHtml = '<td style="font-weight: bold;">Total</td>';
+            let totalHtml = '<td>Total</td>';
             state.players.forEach(player => {
                 const total = state.scores[player].reduce((a, b) => a + (parseInt(b) || 0), 0);
                 totalHtml += `<td id="total-${player}" class="total-cell">${total}</td>`;
@@ -349,48 +435,34 @@
         function updateScore(playerName, holeIndex, value) {
             const score = parseInt(value) || 0;
             state.scores[playerName][holeIndex] = score;
-            
-            // Update individual total
             const total = state.scores[playerName].reduce((a, b) => a + (parseInt(b) || 0), 0);
             document.getElementById(`total-${playerName}`).innerText = total;
-            
             save();
         }
 
         function showSummary() {
             const list = document.getElementById('summary-list');
             list.innerHTML = '';
-            
-            const results = state.players.map(name => {
-                const total = state.scores[name].reduce((a, b) => a + (parseInt(b) || 0), 0);
-                return { name, total };
-            });
-
-            // Sort by total (ascending, lowest score wins)
+            const results = state.players.map(name => ({ name, total: state.scores[name].reduce((a, b) => a + (parseInt(b) || 0), 0) }));
             results.sort((a, b) => a.total - b.total);
-
             results.forEach((res, index) => {
                 const li = document.createElement('li');
-                li.className = index === 0 ? 'winner' : '';
-                li.innerHTML = `
-                    <span>${index + 1}. ${res.name}</span>
-                    <span>${res.total}</span>
-                `;
+                if (index === 0) li.className = 'winner';
+                const color = state.playerColors[res.name] || '#ccc';
+                li.innerHTML = `<div style="display: flex; align-items: center;"><span style="margin-right: 10px;">${index + 1}.</span><div class="ball-circle" style="color: ${color}"></div><span>${res.name}</span></div><span>${res.total}</span>`;
                 list.appendChild(li);
             });
-
             showView('summary-view');
         }
 
         function resetGame() {
-            if (confirm('Are you sure you want to reset? All scores will be lost.')) {
-                state = { players: [], scores: {}, gameStarted: false };
+            if (confirm('Are you sure you want to reset?')) {
+                state = { players: [], playerColors: {}, scores: {}, gameStarted: false };
                 localStorage.removeItem('crazyGolfState');
                 renderPlayerList();
                 showView('setup-view');
             }
         }
-
         window.onload = init;
     </script>
 </body>
