@@ -122,7 +122,31 @@
             font-size: 12px;
         }
 
-        /* Ball Circle Styles */
+        /* Ball Color Picker Styles */
+        .ball-picker {
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            border: none;
+            background: none;
+            cursor: pointer;
+            margin-right: 12px;
+            flex-shrink: 0;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .ball-picker::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+
+        .ball-picker::-webkit-color-swatch {
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 50%;
+            box-shadow: inset -3px -3px 6px rgba(0,0,0,0.2);
+        }
+
+        /* Standard Ball Circle (for summary/non-interactive) */
         .ball-circle {
             width: 20px;
             height: 20px;
@@ -136,7 +160,7 @@
             box-shadow: inset -3px -3px 6px rgba(0,0,0,0.2);
         }
 
-        .player-name-clickable {
+        .player-label {
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -146,7 +170,7 @@
             transition: background 0.2s;
         }
 
-        .player-name-clickable:hover {
+        .player-label:hover {
             background-color: #f0fdf4;
             color: var(--primary-green);
         }
@@ -179,7 +203,6 @@
         }
 
         .th-player {
-            cursor: pointer;
             padding: 0;
         }
 
@@ -191,9 +214,10 @@
             padding: 8px 4px;
             width: 100%;
             height: 100%;
+            cursor: pointer;
         }
 
-        .th-player:hover {
+        .th-content:hover {
             background-color: var(--light-green);
         }
 
@@ -249,7 +273,7 @@
     <!-- Setup View -->
     <div id="setup-view" class="view active">
         <h3>Add Players</h3>
-        <p style="font-size: 0.9em; color: #666; margin-top: -10px;">Click a name to choose ball color</p>
+        <p style="font-size: 0.9em; color: #666; margin-top: -10px;">Click ball or name to choose color</p>
         <div class="setup-group">
             <input type="text" id="player-name" placeholder="Enter name..." aria-label="Player name">
             <button class="btn-add" onclick="addPlayer()">Add</button>
@@ -281,9 +305,6 @@
         <ul id="summary-list"></ul>
         <button class="btn-start" onclick="resetGame()">New Game</button>
     </div>
-
-    <!-- Hidden Native Color Picker -->
-    <input type="color" id="native-color-picker" style="display: none;">
 
     <script>
         const DEFAULT_COLORS = [
@@ -354,6 +375,16 @@
             save();
         }
 
+        function updatePlayerColor(playerName, newColor) {
+            state.playerColors[playerName] = newColor;
+            save();
+            if (state.gameStarted) {
+                renderScorecard();
+            } else {
+                renderPlayerList();
+            }
+        }
+
         function renderPlayerList() {
             const list = document.getElementById('player-list');
             const startBtn = document.getElementById('start-btn');
@@ -362,30 +393,17 @@
                 const li = document.createElement('li');
                 const color = state.playerColors[player] || '#ccc';
                 li.innerHTML = `
-                    <div class="player-name-clickable" onclick="openColorPicker('${player}')">
-                        <div class="ball-circle" style="color: ${color}"></div>
+                    <label class="player-label">
+                        <input type="color" class="ball-picker" 
+                            value="${color}" 
+                            onchange="updatePlayerColor('${player}', this.value)">
                         <span>${player}</span>
-                    </div>
+                    </label>
                     <button class="btn-remove" onclick="removePlayer(${index})">Remove</button>
                 `;
                 list.appendChild(li);
             });
             startBtn.style.display = state.players.length > 0 ? 'block' : 'none';
-        }
-
-        function openColorPicker(playerName) {
-            const picker = document.getElementById('native-color-picker');
-            picker.oninput = (e) => {
-                state.playerColors[playerName] = e.target.value;
-                save();
-                if (state.gameStarted) {
-                    renderScorecard();
-                } else {
-                    renderPlayerList();
-                }
-            };
-            picker.value = state.playerColors[playerName] || '#000000';
-            picker.click();
         }
 
         function startGame() {
@@ -403,11 +421,14 @@
             state.players.forEach(player => {
                 const color = state.playerColors[player] || '#ccc';
                 headerRow.innerHTML += `
-                    <th onclick="openColorPicker('${player}')" class="th-player">
-                        <div class="th-content">
-                            <div class="ball-circle" style="color: ${color}; width: 14px; height: 14px; margin-right: 0;"></div>
+                    <th class="th-player">
+                        <label class="th-content">
+                            <input type="color" class="ball-picker" 
+                                style="width: 16px; height: 16px; margin-right: 0;"
+                                value="${color}" 
+                                onchange="updatePlayerColor('${player}', this.value)">
                             <span>${player}</span>
-                        </div>
+                        </label>
                     </th>`;
             });
             body.innerHTML = '';
