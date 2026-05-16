@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crazy Golf Scorecard</title>
+    <style>
+        :root {
+            --primary-green: #2e7d32;
+            --light-green: #4caf50;
+            --bg-color: #f1f8e9;
+            --text-dark: #333;
+            --white: #ffffff;
+            --danger: #d32f2f;
+        }
+
+        * {
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-dark);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        header {
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: var(--primary-green);
+            margin: 0;
+        }
+
+        .view {
+            display: none;
+            width: 100%;
+            max-width: 600px;
+            background: var(--white);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .view.active {
+            display: block;
+        }
+
+        .setup-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            flex-grow: 1;
+            padding: 10px;
+            border: 2px solid var(--light-green);
+            border-radius: 6px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:active {
+            opacity: 0.7;
+        }
+
+        .btn-add {
+            background-color: var(--primary-green);
+            color: white;
+        }
+
+        .btn-start {
+            background-color: var(--light-green);
+            color: white;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .btn-reset {
+            background-color: var(--danger);
+            color: white;
+            margin-top: 20px;
+        }
+
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .btn-remove {
+            background: var(--danger);
+            color: white;
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+
+        /* Scorecard Table Styles */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 4px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        th {
+            background-color: var(--primary-green);
+            color: white;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 80px;
+        }
+
+        .score-input {
+            width: 100%;
+            max-width: 45px;
+            padding: 8px 2px;
+            text-align: center;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px; /* Prevents iOS zoom on focus */
+        }
+
+        .total-cell {
+            font-weight: bold;
+            background-color: #f9f9f9;
+        }
+
+        .total-row {
+            background-color: #eee;
+            font-weight: bold;
+        }
+
+        @media (max-width: 480px) {
+            body { padding: 10px 5px; }
+            .view { padding: 10px; }
+            table { 
+                min-width: 0; 
+                table-layout: fixed;
+            }
+            th, td {
+                padding: 4px 2px;
+                font-size: 13px;
+            }
+            .score-input {
+                font-size: 16px;
+                padding: 6px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>⛳ Scorecard</h1>
+    </header>
+
+    <!-- Setup View -->
+    <div id="setup-view" class="view active">
+        <h3>Add Players</h3>
+        <div class="setup-group">
+            <input type="text" id="player-name" placeholder="Enter name..." aria-label="Player name">
+            <button class="btn-add" onclick="addPlayer()">Add</button>
+        </div>
+        <ul id="player-list"></ul>
+        <button id="start-btn" class="btn-start" onclick="startGame()" style="display: none;">Start Game</button>
+    </div>
+
+    <!-- Scorecard View -->
+    <div id="scorecard-view" class="view">
+        <div class="table-container">
+            <table id="score-table">
+                <thead>
+                    <tr id="table-header">
+                        <th>Player</th>
+                        <!-- Holes 1-9 generated here -->
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body">
+                </tbody>
+            </table>
+        </div>
+        <button class="btn-start" onclick="showSummary()">Finish Game</button>
+        <button class="btn-reset" onclick="resetGame()">Reset Game</button>
+    </div>
+
+    <!-- Summary View -->
+    <div id="summary-view" class="view">
+        <h3>Final Standings</h3>
+        <ul id="summary-list" class="summary-list"></ul>
+        <button class="btn-start" onclick="resetGame()">New Game</button>
+    </div>
+
+    <script>
+        let state = {
+            players: [],
+            scores: {}, // { playerName: [hole1, hole2, ...] }
+            gameStarted: false
+        };
+
+        // Initialize from LocalStorage
+        function init() {
+            const saved = localStorage.getItem('crazyGolfState');
+            if (saved) {
+                state = JSON.parse(saved);
+                if (state.gameStarted) {
+                    showView('scorecard-view');
+                    renderScorecard();
+                } else {
+                    renderPlayerList();
+                }
+            }
+        }
+
+        function save() {
+            localStorage.setItem('crazyGolfState', JSON.stringify(state));
+        }
+
+        function showView(viewId) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(viewId).classList.add('active');
+        }
+
+        function addPlayer() {
+            const input = document.getElementById('player-name');
+            const name = input.value.trim();
+            if (name && !state.players.includes(name)) {
+                state.players.push(name);
+                state.scores[name] = Array(9).fill(0);
+                input.value = '';
+                renderPlayerList();
+                save();
+            }
+        }
+
+        function removePlayer(index) {
+            const name = state.players[index];
+            delete state.scores[name];
+            state.players.splice(index, 1);
+            renderPlayerList();
+            save();
+        }
+
+        function renderPlayerList() {
+            const list = document.getElementById('player-list');
+            const startBtn = document.getElementById('start-btn');
+            list.innerHTML = '';
+            state.players.forEach((player, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${player}</span>
+                    <button class="btn-remove" onclick="removePlayer(${index})">Remove</button>
+                `;
+                list.appendChild(li);
+            });
+            startBtn.style.display = state.players.length > 0 ? 'block' : 'none';
+        }
+
+        function startGame() {
+            if (state.players.length === 0) return;
+            state.gameStarted = true;
+            showView('scorecard-view');
+            renderScorecard();
+            save();
+        }
+
+        function renderScorecard() {
+            const headerRow = document.getElementById('table-header');
+            const body = document.getElementById('table-body');
+            
+            // Render Header: "Hole" then each player name
+            headerRow.innerHTML = '<th>Hole</th>';
+            state.players.forEach(player => {
+                headerRow.innerHTML += `<th>${player}</th>`;
+            });
+
+            // Render Rows for each hole (1-9)
+            body.innerHTML = '';
+            for (let hIndex = 0; hIndex < 9; hIndex++) {
+                const tr = document.createElement('tr');
+                let rowHtml = `<td>${hIndex + 1}</td>`;
+                
+                state.players.forEach(player => {
+                    const val = state.scores[player][hIndex] || '';
+                    rowHtml += `
+                        <td>
+                            <input type="number" class="score-input" 
+                                value="${val}" 
+                                min="1" 
+                                oninput="updateScore('${player}', ${hIndex}, this.value)">
+                        </td>
+                    `;
+                });
+                tr.innerHTML = rowHtml;
+                body.appendChild(tr);
+            }
+
+            // Render Total Row at the bottom
+            const totalTr = document.createElement('tr');
+            totalTr.className = 'total-row';
+            let totalHtml = '<td style="font-weight: bold;">Total</td>';
+            state.players.forEach(player => {
+                const total = state.scores[player].reduce((a, b) => a + (parseInt(b) || 0), 0);
+                totalHtml += `<td id="total-${player}" class="total-cell">${total}</td>`;
+            });
+            totalTr.innerHTML = totalHtml;
+            body.appendChild(totalTr);
+        }
+
+        function updateScore(playerName, holeIndex, value) {
+            const score = parseInt(value) || 0;
+            state.scores[playerName][holeIndex] = score;
+            
+            // Update individual total
+            const total = state.scores[playerName].reduce((a, b) => a + (parseInt(b) || 0), 0);
+            document.getElementById(`total-${playerName}`).innerText = total;
+            
+            save();
+        }
+
+        function showSummary() {
+            const list = document.getElementById('summary-list');
+            list.innerHTML = '';
+            
+            const results = state.players.map(name => {
+                const total = state.scores[name].reduce((a, b) => a + (parseInt(b) || 0), 0);
+                return { name, total };
+            });
+
+            // Sort by total (ascending, lowest score wins)
+            results.sort((a, b) => a.total - b.total);
+
+            results.forEach((res, index) => {
+                const li = document.createElement('li');
+                li.className = index === 0 ? 'winner' : '';
+                li.innerHTML = `
+                    <span>${index + 1}. ${res.name}</span>
+                    <span>${res.total}</span>
+                `;
+                list.appendChild(li);
+            });
+
+            showView('summary-view');
+        }
+
+        function resetGame() {
+            if (confirm('Are you sure you want to reset? All scores will be lost.')) {
+                state = { players: [], scores: {}, gameStarted: false };
+                localStorage.removeItem('crazyGolfState');
+                renderPlayerList();
+                showView('setup-view');
+            }
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
