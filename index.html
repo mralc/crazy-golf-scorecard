@@ -272,6 +272,10 @@
 
     <!-- Setup View -->
     <div id="setup-view" class="view active">
+        <h3>Course Setup</h3>
+        <div class="setup-group">
+            <input type="text" id="course-name" placeholder="Course Name (e.g. Pirate Cove)" aria-label="Course name">
+        </div>
         <h3>Add Players</h3>
         <p style="font-size: 0.9em; color: #666; margin-top: -10px;">Click ball or name to choose color</p>
         <div class="setup-group">
@@ -284,6 +288,7 @@
 
     <!-- Scorecard View -->
     <div id="scorecard-view" class="view">
+        <h3 id="current-course-display" style="text-align: center; color: var(--primary-green);"></h3>
         <div class="table-container">
             <table id="score-table">
                 <thead>
@@ -296,14 +301,17 @@
             </table>
         </div>
         <button class="btn-start" onclick="showSummary()">Finish Game</button>
-        <button class="btn-reset" onclick="resetGame()">Reset Game</button>
+        <button class="btn-reset" onclick="resetGame()">Reset All</button>
     </div>
 
     <!-- Summary View -->
     <div id="summary-view" class="view">
-        <h3>Final Standings</h3>
-        <ul id="summary-list"></ul>
-        <button class="btn-start" onclick="resetGame()">New Game</button>
+        <h3 id="summary-title" style="text-align: center; color: var(--primary-green);">Game Results</h3>
+        <div id="summary-content"></div>
+        <div id="summary-actions" style="margin-top: 20px;">
+            <button id="next-course-btn" class="btn-start" onclick="prepareNextCourse()">Next Course</button>
+            <button class="btn-reset" onclick="resetGame()">New Game (Reset All)</button>
+        </div>
     </div>
 
     <script>
@@ -316,28 +324,22 @@
         let state = {
             players: [],
             playerColors: {},
-            scores: {},
+            games: [], // Array of { courseName: string, scores: { playerName: [9] } }
+            currentCourseName: '',
+            currentScores: {}, // { playerName: [9] }
             gameStarted: false
         };
 
         function init() {
-            const saved = localStorage.getItem('crazyGolfState');
+            const saved = localStorage.getItem('crazyGolfStateV2');
             if (saved) {
-                const parsed = JSON.parse(saved);
-                state = {
-                    players: parsed.players || [],
-                    playerColors: parsed.playerColors || {},
-                    scores: parsed.scores || {},
-                    gameStarted: !!parsed.gameStarted
-                };
-                state.players.forEach((p, i) => {
-                    if (!state.playerColors[p]) {
-                        state.playerColors[p] = DEFAULT_COLORS[i % DEFAULT_COLORS.length];
-                    }
-                });
+                state = JSON.parse(saved);
                 if (state.gameStarted) {
                     showView('scorecard-view');
                     renderScorecard();
+                } else if (state.games && state.games.length > 0) {
+                    renderSummary();
+                    showView('summary-view');
                 } else {
                     renderPlayerList();
                 }
@@ -345,7 +347,7 @@
         }
 
         function save() {
-            localStorage.setItem('crazyGolfState', JSON.stringify(state));
+            localStorage.setItem('crazyGolfStateV2', JSON.stringify(state));
         }
 
         function showView(viewId) {
@@ -358,7 +360,7 @@
             const name = input.value.trim();
             if (name && !state.players.includes(name)) {
                 state.players.push(name);
-                state.scores[name] = Array(9).fill(0);
+                state.currentScores[name] = Array(9).fill(0);
                 state.playerColors[name] = DEFAULT_COLORS[(state.players.length - 1) % DEFAULT_COLORS.length];
                 input.value = '';
                 renderPlayerList();
@@ -368,7 +370,7 @@
 
         function removePlayer(index) {
             const name = state.players[index];
-            delete state.scores[name];
+            delete state.currentScores[name];
             delete state.playerColors[name];
             state.players.splice(index, 1);
             renderPlayerList();
@@ -407,14 +409,26 @@
         }
 
         function startGame() {
+            const courseInput = document.getElementById('course-name');
+            const courseName = courseInput.value.trim() || 'Course ' + (state.games.length + 1);
+            
             if (state.players.length === 0) return;
+            
+            state.currentCourseName = courseName;
             state.gameStarted = true;
+            
+            // Initialize scores for the new game if not already there
+            state.players.forEach(p => {
+                if (!state.currentScores[p]) state.currentScores[p] = Array(9).fill(0);
+            });
+
             showView('scorecard-view');
             renderScorecard();
             save();
         }
 
         function renderScorecard() {
+            document.getElementById('current-course-display').innerText = state.currentCourseName;
             const headerRow = document.getElementById('table-header');
             const body = document.getElementById('table-body');
             headerRow.innerHTML = '<th>Hole</th>';
@@ -422,13 +436,13 @@
                 const color = state.playerColors[player] || '#ccc';
                 headerRow.innerHTML += `
                     <th class="th-player">
-                        <label class="th-content">
+                        <div class="th-content">
                             <input type="color" class="ball-picker" 
                                 style="width: 16px; height: 16px; margin-right: 0;"
                                 value="${color}" 
                                 onchange="updatePlayerColor('${player}', this.value)">
                             <span>${player}</span>
-                        </label>
+                        </div>
                     </th>`;
             });
             body.innerHTML = '';
@@ -436,7 +450,7 @@
                 const tr = document.createElement('tr');
                 let rowHtml = `<td>${hIndex + 1}</td>`;
                 state.players.forEach(player => {
-                    const val = state.scores[player][hIndex] || '';
+                    const val = state.currentScores[player][hIndex] || '';
                     rowHtml += `<td><input type="number" class="score-input" value="${val}" min="1" oninput="updateScore('${player}', ${hIndex}, this.value)"></td>`;
                 });
                 tr.innerHTML = rowHtml;
@@ -446,7 +460,7 @@
             totalTr.className = 'total-row';
             let totalHtml = '<td>Total</td>';
             state.players.forEach(player => {
-                const total = state.scores[player].reduce((a, b) => a + (parseInt(b) || 0), 0);
+                const total = state.currentScores[player].reduce((a, b) => a + (parseInt(b) || 0), 0);
                 totalHtml += `<td id="total-${player}" class="total-cell">${total}</td>`;
             });
             totalTr.innerHTML = totalHtml;
@@ -455,32 +469,173 @@
 
         function updateScore(playerName, holeIndex, value) {
             const score = parseInt(value) || 0;
-            state.scores[playerName][holeIndex] = score;
-            const total = state.scores[playerName].reduce((a, b) => a + (parseInt(b) || 0), 0);
-            document.getElementById(`total-${playerName}`).innerText = total;
+            state.currentScores[playerName][holeIndex] = score;
+            const total = state.currentScores[playerName].reduce((a, b) => a + (parseInt(b) || 0), 0);
+            const totalCell = document.getElementById(`total-${playerName}`);
+            if (totalCell) totalCell.innerText = total;
             save();
         }
 
         function showSummary() {
-            const list = document.getElementById('summary-list');
-            list.innerHTML = '';
-            const results = state.players.map(name => ({ name, total: state.scores[name].reduce((a, b) => a + (parseInt(b) || 0), 0) }));
-            results.sort((a, b) => a.total - b.total);
-            results.forEach((res, index) => {
-                const li = document.createElement('li');
-                if (index === 0) li.className = 'winner';
-                const color = state.playerColors[res.name] || '#ccc';
-                li.innerHTML = `<div style="display: flex; align-items: center;"><span style="margin-right: 10px;">${index + 1}.</span><div class="ball-circle" style="color: ${color}"></div><span>${res.name}</span></div><span>${res.total}</span>`;
-                list.appendChild(li);
-            });
+            if (state.gameStarted) {
+                // Save current game to history
+                const currentGame = {
+                    courseName: state.currentCourseName,
+                    scores: JSON.parse(JSON.stringify(state.currentScores))
+                };
+                state.games.push(currentGame);
+                state.gameStarted = false;
+            }
+            
+            renderSummary();
             showView('summary-view');
+            save();
+        }
+
+        function renderSummary() {
+            const content = document.getElementById('summary-content');
+            const title = document.getElementById('summary-title');
+            const nextBtn = document.getElementById('next-course-btn');
+            
+            content.innerHTML = '';
+            
+            const totalGames = state.games.length;
+            title.innerText = totalGames === 3 ? 'Tournament Complete' : 'Game Results';
+
+            // 1. List individual game results
+            state.games.forEach((game, gIndex) => {
+                const gameDiv = document.createElement('div');
+                gameDiv.style.marginBottom = '20px';
+                
+                const gameHeader = document.createElement('h4');
+                gameHeader.innerText = `Game ${gIndex + 1}: ${game.courseName}`;
+                gameHeader.style.color = 'var(--primary-green)';
+                gameHeader.style.borderBottom = '2px solid var(--light-green)';
+                gameHeader.style.paddingBottom = '5px';
+                gameHeader.style.marginTop = '0';
+                gameDiv.appendChild(gameHeader);
+
+                const gameList = document.createElement('ul');
+                const gameStandings = state.players.map(p => ({
+                    name: p,
+                    total: game.scores[p].reduce((a, b) => a + (parseInt(b) || 0), 0),
+                    color: state.playerColors[p]
+                })).sort((a, b) => a.total - b.total);
+
+                gameStandings.forEach((res, i) => {
+                    const li = document.createElement('li');
+                    li.style.padding = '8px 10px';
+                    if (i === 0) li.style.backgroundColor = '#fff9c4';
+                    li.innerHTML = `
+                        <div style="display: flex; align-items: center;">
+                            <span style="width: 25px;">${i + 1}.</span>
+                            <div class="ball-circle" style="color: ${res.color}"></div>
+                            <span>${res.name}</span>
+                        </div>
+                        <span style="font-weight: bold;">${res.total}</span>
+                    `;
+                    gameList.appendChild(li);
+                });
+                gameDiv.appendChild(gameList);
+                content.appendChild(gameDiv);
+            });
+
+            // 2. Overall Leaderboard Table
+            const leaderboardDiv = document.createElement('div');
+            leaderboardDiv.style.marginTop = '30px';
+            leaderboardDiv.style.padding = '15px';
+            leaderboardDiv.style.backgroundColor = '#f0fdf4';
+            leaderboardDiv.style.borderRadius = '12px';
+            leaderboardDiv.style.border = '2px solid var(--primary-green)';
+
+            const lbTitle = document.createElement('h3');
+            lbTitle.innerText = '🏆 Overall Leaderboard';
+            lbTitle.style.textAlign = 'center';
+            lbTitle.style.margin = '0 0 15px 0';
+            lbTitle.style.color = 'var(--primary-green)';
+            leaderboardDiv.appendChild(lbTitle);
+
+            const tableWrap = document.createElement('div');
+            tableWrap.className = 'table-container';
+            tableWrap.style.marginTop = '0';
+
+            const table = document.createElement('table');
+            table.style.backgroundColor = 'white';
+            
+            // Header
+            let thead = '<thead><tr><th>Rank</th><th>Player</th>';
+            state.games.forEach((_, i) => thead += `<th>G${i+1}</th>`);
+            thead += '<th>Total</th></tr></thead>';
+            table.innerHTML = thead;
+
+            // Body
+            const tbody = document.createElement('tbody');
+            const overallStandings = state.players.map(player => {
+                const gameTotals = state.games.map(g => 
+                    (g.scores[player] || []).reduce((a, b) => a + (parseInt(b) || 0), 0)
+                );
+                const overallTotal = gameTotals.reduce((a, b) => a + b, 0);
+                return { name: player, gameTotals, overallTotal, color: state.playerColors[player] };
+            }).sort((a, b) => a.overallTotal - b.overallTotal);
+
+            overallStandings.forEach((res, i) => {
+                const tr = document.createElement('tr');
+                if (i === 0) tr.style.backgroundColor = '#fff9c4';
+                
+                let rowHtml = `
+                    <td>${i + 1}</td>
+                    <td style="text-align: left; padding-left: 10px;">
+                        <div class="ball-circle" style="color: ${res.color}; width: 12px; height: 12px; margin-right: 5px;"></div>
+                        ${res.name}
+                    </td>
+                `;
+                res.gameTotals.forEach(gt => rowHtml += `<td>${gt}</td>`);
+                rowHtml += `<td style="font-weight: bold; color: var(--primary-green);">${res.overallTotal}</td>`;
+                tr.innerHTML = rowHtml;
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            tableWrap.appendChild(table);
+            leaderboardDiv.appendChild(tableWrap);
+            content.appendChild(leaderboardDiv);
+
+            if (totalGames >= 3) {
+                nextBtn.style.display = 'none';
+            } else {
+                nextBtn.style.display = 'block';
+                nextBtn.innerText = `Start Game ${totalGames + 1}`;
+            }
+        }
+
+        function prepareNextCourse() {
+            const nextCourse = prompt('Enter the name for the next course:');
+            if (nextCourse !== null) {
+                state.currentCourseName = nextCourse || `Course ${state.games.length + 1}`;
+                // Reset current scores for the next round
+                state.players.forEach(p => {
+                    state.currentScores[p] = Array(9).fill(0);
+                });
+                state.gameStarted = true;
+                showView('scorecard-view');
+                renderScorecard();
+                save();
+            }
         }
 
         function resetGame() {
-            if (confirm('Are you sure you want to reset?')) {
-                state = { players: [], playerColors: {}, scores: {}, gameStarted: false };
-                localStorage.removeItem('crazyGolfState');
+            if (confirm('Are you sure you want to reset everything? This will clear all players and games.')) {
+                state = {
+                    players: [],
+                    playerColors: {},
+                    games: [],
+                    currentCourseName: '',
+                    currentScores: {},
+                    gameStarted: false
+                };
+                localStorage.removeItem('crazyGolfStateV2');
                 renderPlayerList();
+                const courseNameInput = document.getElementById('course-name');
+                if (courseNameInput) courseNameInput.value = '';
                 showView('setup-view');
             }
         }
